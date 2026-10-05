@@ -35,3 +35,25 @@ test('isUrlAllowed blocks varying protocols', () => {
 
 	expect(isUrlAllowed(checkUrl, allowedUrls)).toBe(false);
 });
+
+test('isUrlAllowed allows a wildcard subdomain entry', () => {
+	const allowedUrls = ['https://*.example.com/callback'];
+
+	expect(isUrlAllowed('https://tenant.example.com/callback', allowedUrls)).toBe(true);
+	expect(isUrlAllowed('https://deep.tenant.example.com/callback', allowedUrls)).toBe(true);
+	expect(isUrlAllowed('https://tenant.example.com/other', allowedUrls)).toBe(false);
+	expect(isUrlAllowed('https://tenant.example.com/callback/extra', allowedUrls)).toBe(false);
+});
+
+test('isUrlAllowed blocks a wildcard entry on a different port', () => {
+	expect(isUrlAllowed('https://tenant.example.com:8443/callback', ['https://*.example.com/callback'])).toBe(false);
+});
+
+test('isUrlAllowed ignores unusable allow list entries', () => {
+	expect(isUrlAllowed('https://example.com/', ['not a url'])).toBe(false);
+	expect(isUrlAllowed('https://example.com/', [''])).toBe(false);
+});
+
+test('isUrlAllowed returns false for an unparsable url', () => {
+	expect(isUrlAllowed('not-a-url', ['https://example.com/'])).toBe(false);
+});

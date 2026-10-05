@@ -51,7 +51,7 @@ export function resolveLoginRedirect(redirect: unknown, opts: { provider?: strin
 		const envKey = `AUTH_${opts.provider.toUpperCase()}_REDIRECT_ALLOW_LIST`;
 
 		if (envKey in env) {
-			const allowedList = toArray(String(env[envKey]));
+			const allowedList = toArray(env[envKey]);
 			allowedList.push(publicURL);
 
 			if (isUrlAllowed(redirect, allowedList)) {
