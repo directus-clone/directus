@@ -17,7 +17,9 @@ import type {
 	WebSocketEvents,
 } from './types.js';
 import { generateUid } from './utils/generate-uid.js';
+import { getReconnectDelay } from './utils/get-reconnect-delay.js';
 import { messageCallback } from './utils/message-callback.js';
+import { redactUrl } from './utils/redact-url.js';
 
 type AuthWSClient<Schema> = WebSocketClient<Schema> & AuthenticationClient<Schema>;
 
@@ -30,6 +32,9 @@ const defaultRealTimeConfig: WebSocketConfig = {
 	},
 	reconnect: {
 		delay: 1000, // 1 second
+		maxDelay: 30000, // 30 seconds
+		factor: 2,
+		jitter: true,
 		retries: 10,
 	},
 };
@@ -96,37 +101,37 @@ export function realtime(config: WebSocketConfig = {}) {
 			const reconnectPromise = new Promise<WebSocketInterface>((resolve, reject) => {
 				if (!config.reconnect || wasManuallyDisconnected) return reject();
 
-				debug(
-					'info',
-					`reconnect #${reconnectState.attempts} ` +
-						(reconnectState.attempts >= config.reconnect.retries
-							? 'maximum retries reached'
-							: `trying again in ${Math.max(100, config.reconnect.delay)}ms`),
-				);
-
 				if (reconnectState.active) return reconnectState.active;
 
 				if (reconnectState.attempts >= config.reconnect.retries) {
-					reconnectState.attempts = -1;
+					reconnectState.attempts = 0;
+					debug('info', 'maximum retries reached');
 					return reject();
 				}
 
-				setTimeout(
-					() =>
-						self
-							.connect()
-							.then((ws) => {
-								// reconnect to existing subscriptions
-								subscriptions.forEach((sub) => {
-									self.sendMessage(sub);
-								});
+				const delay = getReconnectDelay(reconnectState.attempts + 1, config.reconnect);
 
-								return ws;
-							})
-							.then(resolve)
-							.catch(reject),
-					Math.max(100, config.reconnect.delay),
+				debug(
+					'info',
+					`reconnect #${reconnectState.attempts + 1} trying again in ${delay}ms`,
 				);
+
+				reconnectState.timer = setTimeout(() => {
+					reconnectState.timer = undefined;
+
+					self
+						.connect()
+						.then((ws) => {
+							// reconnect to existing subscriptions
+							subscriptions.forEach((sub) => {
+								self.sendMessage(sub);
+							});
+
+							return ws;
+						})
+						.then(resolve)
+						.catch(() => {});
+				}, delay);
 			});
 
 			reconnectState.attempts += 1;
@@ -274,7 +279,7 @@ export function realtime(config: WebSocketConfig = {}) {
 
 				try {
 					const url = await getSocketUrl(self);
-					debug('info', `Connecting to ${url}...`);
+					debug('info', `Connecting to ${redactUrl(url)}...`);
 
 					ws = new client.globals.WebSocket(url);
 				} catch (e) {
@@ -298,6 +303,7 @@ export function realtime(config: WebSocketConfig = {}) {
 					state = { code: 'open', connection: ws, firstMessage: true };
 					reconnectState.attempts = 0;
 					reconnectState.active = false;
+					clearTimeout(reconnectState.timer);
 					clearTimeout(connectTimeout);
 					handleMessages(self);
 

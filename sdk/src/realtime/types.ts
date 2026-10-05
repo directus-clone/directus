@@ -7,8 +7,11 @@ export interface WebSocketConfig {
 	authMode?: WebSocketAuthModes;
 	reconnect?:
 		| {
-				delay: number; // in ms
+				delay: number; // in ms, base delay before the first retry
 				retries: number;
+				maxDelay?: number; // in ms, upper bound for the exponential backoff
+				factor?: number; // multiplier applied to the delay on every attempt
+				jitter?: boolean; // randomize the delay, enabled by default
 		  }
 		| false;
 	connect?:
@@ -68,6 +71,7 @@ export type ConnectionState =
 export type ReconnectState = {
 	attempts: number;
 	active: false | Promise<WebSocketInterface | void>;
+	timer?: ReturnType<typeof setTimeout>;
 };
 
 type Fallback<Selected, Options> = Selected extends Options ? Selected : Options;
