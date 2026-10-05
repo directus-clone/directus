@@ -10,7 +10,13 @@ export interface RestClient<Schema> {
 
 export interface RestConfig {
 	credentials?: RequestCredentials;
+	retry?: Partial<RetryConfig>;
 	// onError?: (error: any) => any;
 	onRequest?: RequestTransformer;
 	onResponse?: ResponseTransformer;
+}
+
+export interface RetryConfig {
+	attempts: number;
+	delay: number;
 }

@@ -6,6 +6,7 @@ const fetchMock = vi.fn(async () => ({}));
 
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.useRealTimers();
 });
 
 describe('Request', () => {
@@ -95,6 +96,100 @@ describe('Request', () => {
 					errors: [{ message: 'Error' }] as any,
 				}),
 			);
+		});
+	});
+
+	describe('retries', () => {
+		it('should retry a failed fetch before returning a successful response', async () => {
+			const retryingFetch = vi
+				.fn()
+				.mockRejectedValueOnce(new TypeError('Network error'))
+				.mockResolvedValueOnce({ data: 'complete' });
+
+			await expect(
+				request('https://example.com', {}, retryingFetch, { attempts: 1, delay: 0 }),
+			).resolves.toBe('complete');
+
+			expect(retryingFetch).toHaveBeenCalledTimes(2);
+		});
+
+		it('should stop retrying after the configured number of attempts', async () => {
+			const retryingFetch = vi.fn().mockRejectedValue(new TypeError('Network error'));
+
+			await expect(
+				request('https://example.com', {}, retryingFetch, { attempts: 2, delay: 0 }),
+			).rejects.toThrow(RequestError);
+
+			expect(retryingFetch).toHaveBeenCalledTimes(3);
+		});
+
+		it('should not retry a client error response', async () => {
+			const response = {
+				headers: new Headers([['Content-Type', 'application/json']]),
+				json: async () => ({ errors: [{ message: 'Invalid request' }] }),
+				text: async () => '',
+				ok: false,
+				status: 400,
+			};
+
+			const retryingFetch = vi.fn().mockResolvedValue(response);
+
+			await expect(
+				request('https://example.com', {}, retryingFetch, { attempts: 2, delay: 0 }),
+			).rejects.toThrow(RequestError);
+
+			expect(retryingFetch).toHaveBeenCalledTimes(1);
+		});
+
+		it('should retry a server error response', async () => {
+			const response = {
+				headers: new Headers([['Content-Type', 'application/json']]),
+				json: async () => ({ errors: [{ message: 'Unavailable' }] }),
+				text: async () => '',
+				ok: false,
+				status: 503,
+			};
+
+			const retryingFetch = vi.fn().mockResolvedValueOnce(response).mockResolvedValueOnce({ data: 'complete' });
+
+			await expect(
+				request('https://example.com', {}, retryingFetch, { attempts: 1, delay: 0 }),
+			).resolves.toBe('complete');
+
+			expect(retryingFetch).toHaveBeenCalledTimes(2);
+		});
+
+		it('should apply an increasing delay between attempts', async () => {
+			vi.useFakeTimers();
+			const retryingFetch = vi.fn().mockRejectedValue(new TypeError('Network error'));
+			const promise = request('https://example.com', {}, retryingFetch, { attempts: 2, delay: 10 });
+
+			await vi.advanceTimersByTimeAsync(9);
+			expect(retryingFetch).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(1);
+			expect(retryingFetch).toHaveBeenCalledTimes(2);
+
+			await vi.advanceTimersByTimeAsync(19);
+			expect(retryingFetch).toHaveBeenCalledTimes(2);
+
+			await vi.advanceTimersByTimeAsync(1);
+			await expect(promise).rejects.toThrow(RequestError);
+
+			expect(retryingFetch).toHaveBeenCalledTimes(3);
+		});
+
+		it('should pass the same request options to each attempt', async () => {
+			const options = { method: 'GET', headers: { Authorization: 'Bearer token' } };
+			const retryingFetch = vi
+				.fn()
+				.mockRejectedValueOnce(new TypeError('Network error'))
+				.mockResolvedValue({ data: [] });
+
+			await request('https://example.com', options, retryingFetch, { attempts: 1, delay: 0 });
+
+			expect(retryingFetch).toHaveBeenNthCalledWith(1, 'https://example.com', options);
+			expect(retryingFetch).toHaveBeenNthCalledWith(2, 'https://example.com', options);
 		});
 	});
 });
