@@ -1,7 +1,7 @@
 import { useEnv } from '@directus/env';
 import type { Request } from 'express';
 import { expect, test, vi } from 'vitest';
-import { shouldSkipCache } from './should-skip-cache.js';
+import { getIgnoreList, matchesIgnorePattern, parseIgnoreList, shouldSkipCache } from './should-skip-cache.js';
 
 vi.mock('@directus/env');
 
@@ -140,3 +140,26 @@ test.each([
 		expect(shouldSkipCache(req)).toBe(value);
 	},
 );
+
+test('matches an exact ignore pattern', () => {
+	expect(matchesIgnorePattern('directus_activity', 'directus_activity')).toBe(true);
+	expect(matchesIgnorePattern('directus_activit', 'directus_activity')).toBe(false);
+});
+
+test('matches a trailing wildcard ignore pattern', () => {
+	expect(matchesIgnorePattern('directus_activity', 'directus_*')).toBe(true);
+	expect(matchesIgnorePattern('articles', 'directus_*')).toBe(false);
+});
+
+test('parses a comma separated ignore list', () => {
+	expect(parseIgnoreList('directus_activity,directus_presets')).toEqual([
+		'directus_activity',
+		'directus_presets',
+	]);
+});
+
+test('getIgnoreList is stable across repeated calls', () => {
+	const list = ['directus_activity', 'directus_presets'];
+
+	expect(getIgnoreList(list)).toEqual(getIgnoreList(list));
+});
