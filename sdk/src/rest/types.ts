@@ -10,6 +10,7 @@ export interface RestClient<Schema> {
 
 export interface RestConfig {
 	credentials?: RequestCredentials;
+	timeout?: number;
 	// onError?: (error: any) => any;
 	onRequest?: RequestTransformer;
 	onResponse?: ResponseTransformer;

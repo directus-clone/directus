@@ -14,13 +14,40 @@ export const request = async <Output = any>(
 	url: string,
 	options: RequestInit,
 	fetcher: FetchInterface = globalThis.fetch,
+	timeoutMs?: number,
 ): Promise<Output> => {
 	options.headers =
 		typeof options.headers === 'object' && !Array.isArray(options.headers)
 			? (options.headers as Record<string, string>)
 			: {};
 
-	return fetcher(url, options).then((response) => {
+	const fetchPromise =
+		timeoutMs && timeoutMs > 0
+			? (() => {
+				const controller = new AbortController();
+				if (options.signal?.aborted) {
+					controller.abort(options.signal.reason);
+				} else {
+					options.signal?.addEventListener('abort', () => controller.abort(options.signal?.reason), {
+						once: true,
+					});
+				}
+
+				return Promise.race([
+					fetcher(url, { ...options, signal: controller.signal }),
+					new Promise((_, reject) => {
+						setTimeout(() => {
+							const error = new Error(`Request to ${url} timed out after ${timeoutMs}ms`);
+							Object.defineProperty(error, 'cause', { value: options.headers });
+							reject(error);
+							controller.abort(error);
+						}, timeoutMs);
+					}),
+				]);
+			})()
+			: fetcher(url, options);
+
+	return fetchPromise.then((response) => {
 		return extractData(response).catch((reason) => {
 			const result: { response: unknown; message: string; errors: any; data?: any } = {
 				message: '',

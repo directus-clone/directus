@@ -6,6 +6,7 @@ const fetchMock = vi.fn(async () => ({}));
 
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.useRealTimers();
 });
 
 describe('Request', () => {
@@ -28,6 +29,27 @@ describe('Request', () => {
 			await request('https://example.com', options, fetchMock);
 
 			expect(fetchMock).toBeCalledWith('https://example.com', options);
+		});
+
+		it('should abort a fetch that exceeds the configured timeout', async () => {
+			vi.useFakeTimers();
+			const timedFetch = vi.fn((_url: string, options: RequestInit) => {
+				return new Promise((_, reject) => {
+					options.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
+				});
+			});
+			const result = request('https://example.com', {}, timedFetch, 100);
+
+			await vi.advanceTimersByTimeAsync(100);
+			await expect(result).rejects.toThrow('Request to https://example.com timed out after 100ms');
+
+			expect(timedFetch).toHaveBeenCalledTimes(1);
+		});
+
+		it('should return a response that completes before the timeout', async () => {
+			const fastFetch = vi.fn().mockResolvedValue({ data: 'complete' });
+
+			await expect(request('https://example.com', {}, fastFetch, 1000)).resolves.toBe('complete');
 		});
 	});
 
