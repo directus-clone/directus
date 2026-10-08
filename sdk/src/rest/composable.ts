@@ -64,7 +64,10 @@ export const rest = (config: Partial<RestConfig> = {}) => {
 					fetchOptions = await restConfig.onRequest(fetchOptions);
 				}
 
-				let result = await request<Output>(requestUrl.toString(), fetchOptions, client.globals.fetch);
+				let result = await request<Output>(requestUrl.toString(), fetchOptions, client.globals.fetch, {
+					attempts: restConfig.retry?.attempts || 2,
+					delay: restConfig.retry?.delay ?? 250,
+				});
 
 				// apply onResponse hook from command
 				if ('onResponse' in options) {
